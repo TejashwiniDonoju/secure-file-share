@@ -31,13 +31,28 @@ export default function App() {
  * 📤 UPGRADED SENDER PANEL (Drag-and-Drop & Multi-File Support)
  */
 function SendView() {
-  const [files, setFiles] = useState([]); // Feature 4: Array for multiple files
+  const [files, setFiles] = useState([]); 
   const [downloadLimit, setDownloadLimit] = useState(5);
   const [expiryHours, setExpiryHours] = useState(24);
   const [outputPin, setOutputPin] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [liveNotification, setLiveNotification] = useState(''); // 🔥 Track download alert messages
+
+  // 🔥 Feature 1: Listen for real-time WebSocket signals from the backend
+  useEffect(() => {
+    const socket = io(BACKEND_URL);
+
+    socket.on('file-downloaded', (data) => {
+      // Check if the downloaded pin matches the one this user just generated
+      if (outputPin && data.pinCode === outputPin) {
+        setLiveNotification(`🎉 Awesome! Someone just downloaded your bundle "${data.fileName}"! (Total Downloads: ${data.count})`);
+      }
+    });
+
+    return () => socket.disconnect(); // Disconnect cleanly when leaving screen
+  }, [outputPin]);
 
   // Feature 2: Drag and Drop Handlers
   const handleDragOver = (e) => {
@@ -99,6 +114,13 @@ function SendView() {
       <h2>Upload and Share</h2>
       {error && <div className="error-box">{error}</div>}
 
+      {/* 🔥 Show Live Real-time Notification Banner if it exists */}
+      {liveNotification && (
+        <div className="success-box" style={{ background: '#0284c7', border: '1px solid #38bdf8', animation: 'bounce 1s' }}>
+          <strong>{liveNotification}</strong>
+        </div>
+      )}
+
       {!outputPin ? (
         <form onSubmit={handleUpload}>
           {/* Drag & Drop Zone */}
@@ -153,9 +175,9 @@ function SendView() {
           <h1 style={{ fontSize: '3.5rem', letterSpacing: '6px', margin: '0.5rem 0', color: '#38bdf8' }}>{outputPin}</h1>
           
           <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <button onClick={() => navigator.clipboard.writeText(outputPin)} style={{ background: '#334155' }}>Copy Pin Code</button>
-            <button onClick={() => navigator.clipboard.writeText(getQuickLink())} style={{ background: '#10b981' }}>🔗 Copy Quick-Link URL</button>
-            <button onClick={() => { setOutputPin(''); setFiles([]); }} className="nav-btn">Upload More Files</button>
+            <button type="button" onClick={() => navigator.clipboard.writeText(outputPin)} style={{ background: '#334155' }}>Copy Pin Code</button>
+            <button type="button" onClick={() => navigator.clipboard.writeText(getQuickLink())} style={{ background: '#10b981' }}>🔗 Copy Quick-Link URL</button>
+            <button type="button" onClick={() => { setOutputPin(''); setFiles([]); setLiveNotification(''); }} className="nav-btn">Upload More Files</button>
           </div>
         </div>
       )}

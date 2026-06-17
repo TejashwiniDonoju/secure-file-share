@@ -9,6 +9,13 @@ const archiver = require('archiver');
 const File = require('./models/File');
 
 const app = express();
+const http = require('http').Server(app);
+const io = require('socket.io')(http, {
+  cors: {
+    origin: "*", // Allows your live frontend to connect safely
+    methods: ["GET", "POST"]
+  }
+});
 
 // Deployment Environment Adjustments
 const PORT = process.env.PORT || 5000;
@@ -17,6 +24,10 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 app.use(cors());
 app.use(express.json());
+
+io.on('connection', (socket) => {
+  console.log(`📡 A user connected to real-time notification channel: ${socket.id}`);
+});
 
 // Ensure the local uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
@@ -138,8 +149,12 @@ app.get('/api/download-by-pin/:pin', async (req, res) => {
     file.downloadCount += 1;
     await file.save();
 
-    // Feature 1: Server terminal status logs (emulating WebSocket tracking logs)
-    console.log(`🔔 [NOTIFICATION] Pin ${req.params.pin} ("${file.originalName}") was successfully downloaded! Count: ${file.downloadCount}`);
+    // 🔥 REAL-TIME BROADCAST: Send an instant alert across the internet to everyone listening!
+    io.emit('file-downloaded', { 
+      pinCode: req.params.pin, 
+      fileName: file.originalName,
+      count: file.downloadCount 
+    });
 
     res.download(file.path, file.originalName);
   } catch (error) {
@@ -160,7 +175,7 @@ cron.schedule('0 * * * *', async () => {
   } catch (err) { console.error(err); }
 });
 
-app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Advanced System listening on port ${PORT}`));
+http.listen(PORT, "0.0.0.0", () => console.log(`🚀 Advanced Socket System listening on port ${PORT}`));
 /**
  * 📊 ROUTE 4: SECURE SENDER HISTORY LOGS (Verifies password before showing data)
  */
