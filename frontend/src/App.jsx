@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // Change this string variable when deploying to a live service like Render
-const BACKEND_URL = "http://localhost:5000"; 
+const BACKEND_URL = "https://secure-share-backend-gxc5.onrender.com"; 
 
 export default function App() {
   const [view, setView] = useState('upload'); // 'upload', 'download', or 'history'
