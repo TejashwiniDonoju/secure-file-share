@@ -1,0 +1,26 @@
+body {
+  margin: 0; font-family: system-ui, -apple-system, sans-serif; background-color: #0f172a; color: #f8fafc;
+  display: flex; justify-content: center; align-items: center; min-height: 100vh;
+}
+.card {
+  background: #1e293b; border-radius: 12px; padding: 2rem; width: 100%; max-width: 480px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4); box-sizing: border-box;
+}
+h1, h2 { color: #38bdf8; text-align: center; margin-top: 0; }
+.form-group { margin-bottom: 1.25rem; }
+label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: #94a3b8; }
+input, select {
+  width: 100%; padding: 0.75rem; background: #0f172a; border: 1px solid #334155;
+  border-radius: 6px; color: white; font-size: 1rem; box-sizing: border-box;
+}
+input:focus { border-color: #38bdf8; outline: none; }
+button {
+  width: 100%; padding: 0.75rem; background: #0284c7; color: white; border: none;
+  border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 0.5rem;
+}
+button:hover { background: #0369a1; }
+.success-box { background: #064e3b; border: 1px solid #059669; padding: 1rem; border-radius: 6px; word-break: break-all; }
+.error-box { background: #4c0519; border: 1px solid #e11d48; padding: 1rem; border-radius: 6px; color: #fda4af; margin-bottom: 1rem; }
+.link-display { background: #0f172a; padding: 0.5rem; border-radius: 4px; font-family: monospace; display: block; margin: 0.5rem 0; color: #38bdf8; }
+.nav-btn { background: transparent; color: #38bdf8; border: 1px solid #38bdf8; margin-top: 1rem; }
+.nav-btn:hover { background: rgba(56, 189, 248, 0.1); }
