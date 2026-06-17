@@ -43,73 +43,80 @@ const upload = multer({ storage: storage });
 /**
  * ROUTE 1: FILE UPLOAD (Generates Public Shareable Link)
  */
+/**
+ * 🚀 ROUTE 1: UPLOAD & GENERATE 6-DIGIT PIN
+ */
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "Please attach a file." });
-    if (!req.body.password) return res.status(400).json({ error: "Password protection is required." });
+    if (!req.file || !req.body.password) return res.status(400).json({ error: "Missing file or password." });
+
+    // Generate a completely random 6-digit code string
+    let pinCode;
+    let isUnique = false;
+    while (!isUnique) {
+      pinCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const existing = await File.findOne({ pinCode });
+      if (!existing) isUnique = true; // Ensure code isn't being used by another active file
+    }
 
     const hoursValid = parseInt(req.body.expiryHours) || 24;
     const expiresAt = new Date(Date.now() + hoursValid * 60 * 60 * 1000);
-    const downloadLimit = parseInt(req.body.downloadLimit) || 5;
 
-    const newFile = await File.create({
+    await File.create({
       originalName: req.file.originalname,
       path: req.file.path,
       password: req.body.password, 
-      downloadLimit,
+      pinCode,
+      downloadLimit: parseInt(req.body.downloadLimit) || 5,
       expiresAt
     });
 
-    res.status(200).json({ 
-      fileId: newFile._id,
-      downloadLink: `${FRONTEND_URL}/download/${newFile._id}`
-    });
+    // Return the simple pin code to the sender
+    res.status(200).json({ pinCode });
   } catch (error) {
-    res.status(500).json({ error: "Internal Server Processing Error." });
+    res.status(500).json({ error: "Upload failed." });
   }
 });
 
 /**
- * ROUTE 2: FETCH FILE METADATA (Link Verification Engine)
+ * 🔍 ROUTE 2: VERIFY THE PIN-CODE EXISTENCE
  */
-app.get('/api/file-info/:id', async (req, res) => {
+app.get('/api/verify-pin/:pin', async (req, res) => {
   try {
-    const file = await File.findById(req.params.id);
-    if (!file) return res.status(404).json({ error: "Link expired or does not exist." });
+    const file = await File.findOne({ pinCode: req.params.pin });
+    if (!file) return res.status(404).json({ error: "Invalid or expired Pin Code." });
 
-    if (new Date() > file.expiresAt) return res.status(410).json({ error: "This file link has expired." });
+    if (new Date() > file.expiresAt) return res.status(410).json({ error: "This pin has expired." });
     if (file.downloadCount >= file.downloadLimit) return res.status(403).json({ error: "Download quota reached." });
 
-    res.json({ originalName: file.originalName, requiresPassword: true });
+    res.json({ originalName: file.originalName });
   } catch (error) {
-    res.status(500).json({ error: "Invalid link signature parameter." });
+    res.status(500).json({ error: "Verification failed." });
   }
 });
 
 /**
- * ROUTE 3: PASSWORD VALIDATION & DATA DISPATCH
+ * 🔓 ROUTE 3: AUTHENTICATE PASSWORD & STREAM FILE USING PIN
  */
-app.post('/api/download/:id', async (req, res) => {
+app.post('/api/download-by-pin/:pin', async (req, res) => {
   try {
-    const file = await File.findById(req.params.id);
-    if (!file) return res.status(404).json({ error: "Resource not found." });
+    const file = await File.findOne({ pinCode: req.params.pin });
+    if (!file) return res.status(404).json({ error: "File not found." });
 
-    if (new Date() > file.expiresAt) return res.status(410).json({ error: "This file link has expired." });
-    if (file.downloadCount >= file.downloadLimit) return res.status(403).json({ error: "Download threshold met." });
-
-    // Verify Password Match
-    if (file.password !== req.body.password) {
-      return res.status(401).json({ error: "Incorrect password. Access denied." });
+    if (new Date() > file.expiresAt || file.downloadCount >= file.downloadLimit) {
+      return res.status(403).json({ error: "Access rules violated (Expired or quota hit)." });
     }
 
-    // Process tracking data
+    if (file.password !== req.body.password) {
+      return res.status(401).json({ error: "Incorrect file password." });
+    }
+
     file.downloadCount += 1;
     await file.save();
 
-    // Trigger physical file download payload download stream
     res.download(file.path, file.originalName);
   } catch (error) {
-    res.status(500).json({ error: "System failure executing target download." });
+    res.status(500).json({ error: "Download breakdown." });
   }
 });
 
