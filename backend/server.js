@@ -41,9 +41,10 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-/**
- * ROUTE 1: FILE UPLOAD (Generates Public Shareable Link)
- */
+// Add this right before your other routes to prevent Render health-check issues
+app.get('/', (req, res) => {
+  res.send('Backend Server is running successfully!');
+});
 /**
  * 🚀 ROUTE 1: UPLOAD & GENERATE 6-DIGIT PIN
  */
