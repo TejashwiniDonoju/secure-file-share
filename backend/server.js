@@ -48,7 +48,7 @@ const upload = multer({ storage: storage });
  */
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
-    if (!req.file || !req.body.password) return res.status(400).json({ error: "Missing file or password." });
+    if (!req.file) return res.status(400).json({ error: "Missing file upload." });
 
     // Generate a completely random 6-digit code string
     let pinCode;
@@ -65,7 +65,6 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     await File.create({
       originalName: req.file.originalname,
       path: req.file.path,
-      password: req.body.password, 
       pinCode,
       downloadLimit: parseInt(req.body.downloadLimit) || 5,
       expiresAt
@@ -95,20 +94,17 @@ app.get('/api/verify-pin/:pin', async (req, res) => {
   }
 });
 
+
 /**
- * 🔓 ROUTE 3: AUTHENTICATE PASSWORD & STREAM FILE USING PIN
+ * 🔓 UPDATED ROUTE 3: INSTANT DOWNLOAD BY PIN (No Password Needed)
  */
-app.post('/api/download-by-pin/:pin', async (req, res) => {
+app.get('/api/download-by-pin/:pin', async (req, res) => {
   try {
     const file = await File.findOne({ pinCode: req.params.pin });
-    if (!file) return res.status(404).json({ error: "File not found." });
+    if (!file) return res.status(404).json({ error: "File not found or link expired." });
 
     if (new Date() > file.expiresAt || file.downloadCount >= file.downloadLimit) {
-      return res.status(403).json({ error: "Access rules violated (Expired or quota hit)." });
-    }
-
-    if (file.password !== req.body.password) {
-      return res.status(401).json({ error: "Incorrect file password." });
+      return res.status(403).json({ error: "This file has expired or reached its download limit." });
     }
 
     file.downloadCount += 1;
@@ -116,7 +112,7 @@ app.post('/api/download-by-pin/:pin', async (req, res) => {
 
     res.download(file.path, file.originalName);
   } catch (error) {
-    res.status(500).json({ error: "Download breakdown." });
+    res.status(500).json({ error: "Download failed." });
   }
 });
 
