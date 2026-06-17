@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-
+import { io } from 'socket.io-client';
 // Change this string variable when deploying to a live service like Render
 const BACKEND_URL = "https://secure-share-backend-gxc5.onrender.com"; 
 
