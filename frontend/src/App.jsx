@@ -6,8 +6,20 @@ const BACKEND_URL = "https://secure-share-backend-gxc5.onrender.com";
 export default function App() {
   const [activeTab, setActiveTab] = useState('send');
   const [initialPin, setInitialPin] = useState('');
+  
+  // Auth States: Reads from session memory to check if a user is logged in
+  const [token, setToken] = useState(sessionStorage.getItem('userToken') || '');
+  const [username, setUsername] = useState(sessionStorage.getItem('username') || '');
+  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
 
-  // Feature 5: Capture Quick-Link parameter systematically on entry load
+  // Auth form states
+  const [authName, setAuthName] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
+
+  // Capture Quick-Link parameters on page entry
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlPin = params.get('pin');
@@ -17,24 +29,122 @@ export default function App() {
     }
   }, []);
 
+  // Handle Login Request
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail, password: authPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      // Save token securely to sessionStorage
+      sessionStorage.setItem('userToken', data.token);
+      sessionStorage.setItem('username', data.username);
+      setToken(data.token);
+      setUsername(data.username);
+      
+      setAuthPassword('');
+    } catch (err) {
+      setAuthError(err.message);
+    }
+  };
+
+  // Handle Registration (Signup) Request
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthSuccess('');
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: authName, email: authEmail, password: authPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      setAuthSuccess(data.message);
+      setAuthMode('login'); // Redirect to login form on success
+      setAuthName('');
+      setAuthPassword('');
+    } catch (err) {
+      setAuthError(err.message);
+    }
+  };
+
+  // Handle Logout Action
+  const handleLogout = () => {
+    sessionStorage.clear();
+    setToken('');
+    setUsername('');
+    setActiveTab('send');
+  };
+
   return (
     <div className="app-container" style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
-      {/* Streamlined 2-Tab Navigation Controls */}
+      
+      {/* Top Welcome Banner Header */}
+      {token && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1e293b', padding: '0.5rem 1rem', borderRadius: '6px', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+          <span style={{ color: '#34d399' }}>👤 Welcome back, {username}!</span>
+          <button onClick={handleLogout} style={{ width: 'auto', background: '#ef4444', padding: '0.25rem 0.75rem', fontSize: '0.8rem' }}>Logout</button>
+        </div>
+      )}
+
+      {/* Feature Tabs Navigation */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '2rem' }}>
         <button onClick={() => { window.history.pushState({}, '', '/'); setInitialPin(''); setActiveTab('send'); }} style={{ width: 'auto', background: activeTab === 'send' ? '#0284c7' : '#334155', padding: '0.6rem 1.5rem' }}>📤 Send Files</button>
         <button onClick={() => { setActiveTab('receive'); }} style={{ width: 'auto', background: activeTab === 'receive' ? '#0284c7' : '#334155', padding: '0.6rem 1.5rem' }}>📥 Receive Files</button>
       </div>
 
-      {activeTab === 'send' && <SendView />}
+      {/* Tab Rendering */}
+      {activeTab === 'send' && (
+        token ? <SendView token={token} /> : 
+        <div className="card">
+          <h2>🔒 Sender Authentication Required</h2>
+          <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '-10px', marginBottom: '1.5rem' }}>Please log in to your account to distribute files and monitor live download metrics.</p>
+          
+          {authError && <div className="error-box">{authError}</div>}
+          {authSuccess && <div className="success-box">{authSuccess}</div>}
+
+          {authMode === 'login' ? (
+            <form onSubmit={handleLogin}>
+              <div className="form-group"><label>Email Address</label>
+                <input type="email" placeholder="enter email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} required /></div>
+              <div className="form-group"><label>Password</label>
+                <input type="password" placeholder="enter password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} required /></div>
+              <button type="submit">Sign In</button>
+              <p style={{ textAlign: 'center', fontSize: '0.85rem', marginTop: '1rem', color: '#94a3b8' }}>Don't have an account? <span onClick={() => setAuthMode('register')} style={{ color: '#38bdf8', cursor: 'pointer', fontWeight: 'bold' }}>Create Account</span></p>
+            </form>
+          ) : (
+            <form onSubmit={handleRegister}>
+              <div className="form-group"><label>Full Name</label>
+                <input type="text" placeholder="enter name" value={authName} onChange={(e) => setAuthName(e.target.value)} required /></div>
+              <div className="form-group"><label>Email Address</label>
+                <input type="email" placeholder="enter email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} required /></div>
+              <div className="form-group"><label>Secure Password</label>
+                <input type="password" placeholder="create password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} required /></div>
+              <button type="submit">Register Account</button>
+              <p style={{ textAlign: 'center', fontSize: '0.85rem', marginTop: '1rem', color: '#94a3b8' }}>Already have an account? <span onClick={() => setAuthMode('login')} style={{ color: '#38bdf8', cursor: 'pointer', fontWeight: 'bold' }}>Log In</span></p>
+            </form>
+          )}
+        </div>
+      )}
+
       {activeTab === 'receive' && <ReceiveView urlPin={initialPin} clearUrlPin={() => setInitialPin('')} />}
     </div>
   );
 }
 
 /**
- * 📤 SENDER PANEL (Now embeds live file tracking directly at the bottom)
+ * 📤 SENDER MODE PANEL (Requires Session Token Passed Down)
  */
-function SendView() {
+function SendView({ token }) {
   const [files, setFiles] = useState([]);
   const [downloadLimit, setDownloadLimit] = useState(5);
   const [expiryHours, setExpiryHours] = useState(24);
@@ -43,44 +153,34 @@ function SendView() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [liveNotification, setLiveNotification] = useState('');
-  
-  // Local state to track history for this device on the sender page
   const [senderTrackingList, setSenderTrackingList] = useState([]);
 
-  // Fetch metrics for files sent by this device
+  // Fetch trackers belonging strictly to this user
   const refreshTrackingMetrics = async () => {
-    const savedHistory = JSON.parse(localStorage.getItem('myShareHistory') || '[]');
-    if (savedHistory.length === 0) return;
-
     try {
       const res = await fetch(`${BACKEND_URL}/api/history-metrics`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pins: savedHistory.map(item => item.pinCode) })
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       const liveData = await res.json();
       if (res.ok && Array.isArray(liveData)) {
         setSenderTrackingList(liveData);
       }
     } catch (err) {
-      console.error("Failed to fetch sender tracks.", err);
+      console.error("Failed to fetch user tracks.", err);
     }
   };
 
-  // Run tracking sync on mount and whenever a new pin is generated
   useEffect(() => {
     refreshTrackingMetrics();
   }, [outputPin]);
 
-  // WebSocket real-time connection for live alerts
   useEffect(() => {
     const socket = io(BACKEND_URL);
     socket.on('file-downloaded', (data) => {
-      // Trigger a live banner alert if it matches our active output screen
       if (outputPin && data.pinCode === outputPin) {
         setLiveNotification(`🎉 Awesome! Someone just downloaded your bundle "${data.fileName}"! (Total Downloads: ${data.count})`);
       }
-      // Silently refresh the dashboard stats below in real-time
       refreshTrackingMetrics();
     });
     return () => socket.disconnect();
@@ -98,18 +198,15 @@ function SendView() {
     formData.append('expiryHours', expiryHours);
 
     try {
-      const res = await fetch(`${BACKEND_URL}/api/upload`, { method: 'POST', body: formData });
+      const res = await fetch(`${BACKEND_URL}/api/upload`, { 
+        method: 'POST', 
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData 
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       
       setOutputPin(data.pinCode);
-
-      // Save token to localStorage log context
-      const newHistoryItem = { pinCode: data.pinCode, uploadedAt: new Date().getTime() };
-      const savedHistory = JSON.parse(localStorage.getItem('myShareHistory') || '[]');
-      savedHistory.unshift(newHistoryItem);
-      localStorage.setItem('myShareHistory', JSON.stringify(savedHistory));
-
     } catch (err) {
       setError(err.message);
     } finally {
@@ -121,8 +218,6 @@ function SendView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      
-      {/* 1. CORE UPLOAD CARD / SUCCESS CARD */}
       <div className="card">
         <h2>Upload and Share</h2>
         {error && <div className="error-box">{error}</div>}
@@ -167,11 +262,11 @@ function SendView() {
         )}
       </div>
 
-      {/* 2. PERSISTENT SENDER LIVE HISTORY PANEL (Visible only to the Sender) */}
+      {/* Persistent User History Panel */}
       {senderTrackingList.length > 0 && (
         <div className="card" style={{ background: '#111827', borderTop: '4px solid #0284c7' }}>
           <h3 style={{ margin: '0 0 0.5rem 0', color: '#e2e8f0' }}>📈 Your Active File Trackers</h3>
-          <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 1rem 0' }}>Tracks real-time downloads for files shared from this machine.</p>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 1rem 0' }}>Tracks files uploaded strictly under your account.</p>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {senderTrackingList.map((file, idx) => (
@@ -194,13 +289,12 @@ function SendView() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
 
 /**
- * 📥 RECIPIENT PANEL (Stays completely clean and simple)
+ * 📥 RECIPIENT PANEL (Completely open and public!)
  */
 function ReceiveView({ urlPin, clearUrlPin }) {
   const [pin, setPin] = useState(urlPin || '');
