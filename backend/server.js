@@ -175,6 +175,37 @@ cron.schedule('0 * * * *', async () => {
   } catch (err) { console.error(err); }
 });
 
+/**
+ * 📊 ROUTE 4: COLLECTIVE HISTORY TRACKING LOGS (Accepts multiple pins)
+ */
+app.post('/api/history-metrics', async (req, res) => {
+  try {
+    const { pins } = req.body;
+    if (!pins || !Array.isArray(pins)) return res.status(400).json({ error: "Invalid pin manifest payload." });
+
+    // Look up all records matching the array of tracking codes
+    const files = await File.find({ pinCode: { $in: pins } }).sort({ createdAt: -1 });
+
+    // Map through the database fields to format data for dashboard presentation
+    const formattedHistory = files.map(file => {
+      const isExpired = new Date() > file.expiresAt;
+      const isLimitHit = file.downloadCount >= file.downloadLimit;
+      
+      return {
+        pinCode: file.pinCode,
+        originalName: file.originalName,
+        downloadCount: file.downloadCount,
+        downloadLimit: file.downloadLimit,
+        expiresAt: file.expiresAt,
+        status: (isExpired || isLimitHit) ? 'Expired' : 'Active'
+      };
+    });
+
+    res.json(formattedHistory);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to assemble status track record." });
+  }
+});
 http.listen(PORT, "0.0.0.0", () => console.log(`🚀 Advanced Socket System listening on port ${PORT}`));
 /**
  * 📊 ROUTE 4: SECURE SENDER HISTORY LOGS (Verifies password before showing data)
