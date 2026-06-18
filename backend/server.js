@@ -6,11 +6,11 @@ const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
-const bcrypt = require('bcryptjs'); // For hashing passwords
-const jwt = require('jsonwebtoken'); // For secure session tokens
+const bcrypt = require('bcryptjs'); 
+const jwt = require('jsonwebtoken'); 
 
 const File = require('./models/File');
-const User = require('./models/User'); // Import our new User Model
+const User = require('./models/User'); 
 
 const app = express();
 const http = require('http').Server(app);
@@ -45,43 +45,43 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-// Render Health Check Base Endpoint
 app.get('/', (req, res) => {
-  res.send('Backend Server is running successfully with Authentication!');
+  res.send('Backend Server is running successfully with Secret Hint Auth Recovery!');
 });
 
-/**
- * 🔒 SECURITY MIDDLEWARE: Verifies if the request has a valid logged-in user token
- */
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
-
+  const token = authHeader && authHeader.split(' ')[1]; 
   if (!token) return res.status(401).json({ error: "Access denied. Please log in first." });
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) return res.status(403).json({ error: "Session expired. Please log in again." });
-    req.user = user; // Adds user details (id) directly into the request object
+    req.user = user; 
     next();
   });
 };
 
 /**
- * 🔑 AUTH ROUTE 1: USER REGISTRATION (SIGNUP)
+ * 🔑 AUTH ROUTE 1: REGISTRATION (With Secret Hint capture)
  */
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) return res.status(400).json({ error: "All fields are required." });
+    const { name, email, password, secretHint } = req.body;
+    if (!name || !email || !password || !secretHint) return res.status(400).json({ error: "All fields are required." });
 
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ error: "An account with this email already exists." });
 
-    // Hash the password securely
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    await User.create({ name, email, password: hashedPassword });
+    // Save user with lowercase secret for easy validation lookups later
+    await User.create({ 
+      name, 
+      email, 
+      password: hashedPassword, 
+      secretHint: secretHint.toLowerCase().trim() 
+    });
     res.status(201).json({ message: "Account created successfully! You can now log in." });
   } catch (error) {
     res.status(500).json({ error: "Registration failed." });
@@ -89,7 +89,7 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 /**
- * 🔑 AUTH ROUTE 2: USER LOGIN
+ * 🔑 AUTH ROUTE 2: LOGIN
  */
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -102,9 +102,7 @@ app.post('/api/auth/login', async (req, res) => {
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(400).json({ error: "Invalid email or password." });
 
-    // Generate a secure session token valid for 7 days
     const token = jwt.sign({ id: user._id, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
-
     res.json({ token, username: user.name });
   } catch (error) {
     res.status(500).json({ error: "Login failed." });
@@ -112,7 +110,36 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 /**
- * 🚀 AUTHENTICATED ROUTE 3: UPLOAD & LINK TO SENDER ID
+ * 🔄 NEW AUTH ROUTE 3: PASSWORD RESET VIA SECRET HINT ANSWER
+ */
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { email, secretHint, newPassword } = req.body;
+    if (!email || !secretHint || !newPassword) return res.status(400).json({ error: "All entry verification fields are required." });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: "No account found with this email address." });
+
+    // Validate if their typed answer matches what they signed up with
+    if (user.secretHint !== secretHint.toLowerCase().trim()) {
+      return res.status(401).json({ error: "Incorrect answer to security verification hint query." });
+    }
+
+    // Encrypt the brand new replacement password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    user.password = hashedPassword;
+    await user.save();
+
+    res.json({ message: "Password updated successfully! You can now log in with your new password." });
+  } catch (error) {
+    res.status(500).json({ error: "Password override processing system failure." });
+  }
+});
+
+/**
+ * 🚀 AUTHENTICATED ROUTE 4: MULTI-FILE UPLOAD
  */
 app.post('/api/upload', authenticateToken, upload.array('files'), async (req, res) => {
   try {
@@ -140,7 +167,6 @@ app.post('/api/upload', authenticateToken, upload.array('files'), async (req, re
       const hoursValid = parseInt(req.body.expiryHours) || 24;
       const expiresAt = new Date(Date.now() + hoursValid * 60 * 60 * 1000);
 
-      // 🔥 FIXED: File is now saved permanently linked to the logged-in user's account ID!
       await File.create({
         originalName: req.files.length === 1 ? req.files[0].originalname : `Files_Bundle_${pinCode}.zip`,
         path: finalZipPath,
@@ -169,7 +195,7 @@ app.post('/api/upload', authenticateToken, upload.array('files'), async (req, re
 });
 
 /**
- * 📥 PUBLIC ROUTE 4: DIRECT DOWNLOAD BY PIN (No Auth needed for recipients!)
+ * 📥 PUBLIC ROUTE 5: PUBLIC DIRECT ACCESS DOWNLOAD BY PIN
  */
 app.get('/api/download-by-pin/:pin', async (req, res) => {
   try {
@@ -196,11 +222,10 @@ app.get('/api/download-by-pin/:pin', async (req, res) => {
 });
 
 /**
- * 📊 SECURE AUTHENTICATED ROUTE 5: LIVE HISTORY TRACKER
+ * 📊 SECURE AUTHENTICATED ROUTE 6: USER METRICS LOOKUP
  */
 app.get('/api/history-metrics', authenticateToken, async (req, res) => {
   try {
-    // 🔥 SECURE FILTER: Find files matching ONLY the unique ID of the user logged in right now!
     const files = await File.find({ senderId: req.user.id }).sort({ createdAt: -1 });
 
     const formattedHistory = files.map(file => {
@@ -223,7 +248,6 @@ app.get('/api/history-metrics', authenticateToken, async (req, res) => {
   }
 });
 
-// Hourly Automated Cleanup Routine
 cron.schedule('0 * * * *', async () => {
   try {
     const expiredFiles = await File.find({ expiresAt: { $lt: new Date() } });

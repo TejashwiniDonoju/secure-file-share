@@ -7,19 +7,18 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('send');
   const [initialPin, setInitialPin] = useState('');
   
-  // Auth States: Reads from session memory to check if a user is logged in
   const [token, setToken] = useState(sessionStorage.getItem('userToken') || '');
   const [username, setUsername] = useState(sessionStorage.getItem('username') || '');
-  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register' | 'forgot'
 
-  // Auth form states
+  // Input states
   const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [authSecretHint, setAuthSecretHint] = useState(''); // Tracking secret answer inputs
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
 
-  // Capture Quick-Link parameters on page entry
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlPin = params.get('pin');
@@ -29,10 +28,10 @@ export default function App() {
     }
   }, []);
 
-  // Handle Login Request
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
+    setAuthSuccess('');
     try {
       const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
         method: 'POST',
@@ -42,19 +41,16 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      // Save token securely to sessionStorage
       sessionStorage.setItem('userToken', data.token);
       sessionStorage.setItem('username', data.username);
       setToken(data.token);
       setUsername(data.username);
-      
       setAuthPassword('');
     } catch (err) {
       setAuthError(err.message);
     }
   };
 
-  // Handle Registration (Signup) Request
   const handleRegister = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -63,21 +59,43 @@ export default function App() {
       const res = await fetch(`${BACKEND_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: authName, email: authEmail, password: authPassword })
+        body: JSON.stringify({ name: authName, email: authEmail, password: authPassword, secretHint: authSecretHint })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
       setAuthSuccess(data.message);
-      setAuthMode('login'); // Redirect to login form on success
+      setAuthMode('login'); 
       setAuthName('');
       setAuthPassword('');
+      setAuthSecretHint('');
     } catch (err) {
       setAuthError(err.message);
     }
   };
 
-  // Handle Logout Action
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthSuccess('');
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail, secretHint: authSecretHint, newPassword: authPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      setAuthSuccess(data.message);
+      setAuthMode('login');
+      setAuthPassword('');
+      setAuthSecretHint('');
+    } catch (err) {
+      setAuthError(err.message);
+    }
+  };
+
   const handleLogout = () => {
     sessionStorage.clear();
     setToken('');
@@ -88,7 +106,6 @@ export default function App() {
   return (
     <div className="app-container" style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
       
-      {/* Top Welcome Banner Header */}
       {token && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1e293b', padding: '0.5rem 1rem', borderRadius: '6px', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
           <span style={{ color: '#34d399' }}>👤 Welcome back, {username}!</span>
@@ -96,32 +113,34 @@ export default function App() {
         </div>
       )}
 
-      {/* Feature Tabs Navigation */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '2rem' }}>
         <button onClick={() => { window.history.pushState({}, '', '/'); setInitialPin(''); setActiveTab('send'); }} style={{ width: 'auto', background: activeTab === 'send' ? '#0284c7' : '#334155', padding: '0.6rem 1.5rem' }}>📤 Send Files</button>
         <button onClick={() => { setActiveTab('receive'); }} style={{ width: 'auto', background: activeTab === 'receive' ? '#0284c7' : '#334155', padding: '0.6rem 1.5rem' }}>📥 Receive Files</button>
       </div>
 
-      {/* Tab Rendering */}
       {activeTab === 'send' && (
         token ? <SendView token={token} /> : 
         <div className="card">
           <h2>🔒 Sender Authentication Required</h2>
-          <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '-10px', marginBottom: '1.5rem' }}>Please log in to your account to distribute files and monitor live download metrics.</p>
           
           {authError && <div className="error-box">{authError}</div>}
           {authSuccess && <div className="success-box">{authSuccess}</div>}
 
-          {authMode === 'login' ? (
+          {authMode === 'login' && (
             <form onSubmit={handleLogin}>
               <div className="form-group"><label>Email Address</label>
                 <input type="email" placeholder="enter email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} required /></div>
               <div className="form-group"><label>Password</label>
                 <input type="password" placeholder="enter password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} required /></div>
               <button type="submit">Sign In</button>
-              <p style={{ textAlign: 'center', fontSize: '0.85rem', marginTop: '1rem', color: '#94a3b8' }}>Don't have an account? <span onClick={() => setAuthMode('register')} style={{ color: '#38bdf8', cursor: 'pointer', fontWeight: 'bold' }}>Create Account</span></p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginTop: '1rem' }}>
+                <span onClick={() => { setAuthError(''); setAuthSuccess(''); setAuthMode('register'); }} style={{ color: '#38bdf8', cursor: 'pointer' }}>Create Account</span>
+                <span onClick={() => { setAuthError(''); setAuthSuccess(''); setAuthMode('forgot'); }} style={{ color: '#f59e0b', cursor: 'pointer' }}>Forgot Password?</span>
+              </div>
             </form>
-          ) : (
+          )}
+
+          {authMode === 'register' && (
             <form onSubmit={handleRegister}>
               <div className="form-group"><label>Full Name</label>
                 <input type="text" placeholder="enter name" value={authName} onChange={(e) => setAuthName(e.target.value)} required /></div>
@@ -129,8 +148,26 @@ export default function App() {
                 <input type="email" placeholder="enter email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} required /></div>
               <div className="form-group"><label>Secure Password</label>
                 <input type="password" placeholder="create password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} required /></div>
+              <div className="form-group">
+                <label style={{ color: '#f59e0b' }}>Security Question: What is your mother's maiden name or favorite color?</label>
+                <input type="text" placeholder="enter secret answer" value={authSecretHint} onChange={(e) => setAuthSecretHint(e.target.value)} required />
+              </div>
               <button type="submit">Register Account</button>
               <p style={{ textAlign: 'center', fontSize: '0.85rem', marginTop: '1rem', color: '#94a3b8' }}>Already have an account? <span onClick={() => setAuthMode('login')} style={{ color: '#38bdf8', cursor: 'pointer', fontWeight: 'bold' }}>Log In</span></p>
+            </form>
+          )}
+
+          {authMode === 'forgot' && (
+            <form onSubmit={handleResetPassword}>
+              <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1.5rem' }}>Provide your verified registration email and answer your security query question to declare a new replacement password passkey.</p>
+              <div className="form-group"><label>Your Account Email</label>
+                <input type="email" placeholder="enter account email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} required /></div>
+              <div className="form-group"><label>What is your security question answer?</label>
+                <input type="text" placeholder="enter your secret answer" value={authSecretHint} onChange={(e) => setAuthSecretHint(e.target.value)} required /></div>
+              <div className="form-group"><label>Type Your Brand New Password</label>
+                <input type="password" placeholder="enter fresh password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} required /></div>
+              <button type="submit" style={{ background: '#f59e0b' }}>Reset Account Password</button>
+              <p style={{ textAlign: 'center', fontSize: '0.85rem', marginTop: '1rem' }}><span onClick={() => setAuthMode('login')} style={{ color: '#38bdf8', cursor: 'pointer' }}>Back to Sign In</span></p>
             </form>
           )}
         </div>
@@ -142,7 +179,7 @@ export default function App() {
 }
 
 /**
- * 📤 SENDER MODE PANEL (Requires Session Token Passed Down)
+ * 📤 SENDER VIEW
  */
 function SendView({ token }) {
   const [files, setFiles] = useState([]);
@@ -155,7 +192,6 @@ function SendView({ token }) {
   const [liveNotification, setLiveNotification] = useState('');
   const [senderTrackingList, setSenderTrackingList] = useState([]);
 
-  // Fetch trackers belonging strictly to this user
   const refreshTrackingMetrics = async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/history-metrics`, {
@@ -205,7 +241,6 @@ function SendView({ token }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      
       setOutputPin(data.pinCode);
     } catch (err) {
       setError(err.message);
@@ -262,12 +297,10 @@ function SendView({ token }) {
         )}
       </div>
 
-      {/* Persistent User History Panel */}
       {senderTrackingList.length > 0 && (
         <div className="card" style={{ background: '#111827', borderTop: '4px solid #0284c7' }}>
           <h3 style={{ margin: '0 0 0.5rem 0', color: '#e2e8f0' }}>📈 Your Active File Trackers</h3>
           <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 1rem 0' }}>Tracks files uploaded strictly under your account.</p>
-          
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {senderTrackingList.map((file, idx) => (
               <div key={idx} style={{ background: '#0f172a', padding: '0.85rem', borderRadius: '6px', border: '1px solid #1e293b' }}>
@@ -294,7 +327,7 @@ function SendView({ token }) {
 }
 
 /**
- * 📥 RECIPIENT PANEL (Completely open and public!)
+ * 📥 RECIPIENT VIEW
  */
 function ReceiveView({ urlPin, clearUrlPin }) {
   const [pin, setPin] = useState(urlPin || '');
