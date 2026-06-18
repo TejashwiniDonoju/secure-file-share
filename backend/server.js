@@ -6,45 +6,38 @@ const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
+const bcrypt = require('bcryptjs'); // For hashing passwords
+const jwt = require('jsonwebtoken'); // For secure session tokens
+
 const File = require('./models/File');
+const User = require('./models/User'); // Import our new User Model
 
 const app = express();
 const http = require('http').Server(app);
 const io = require('socket.io')(http, {
-  cors: {
-    origin: "*", // Allows your live frontend to connect safely
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// Deployment Environment Adjustments
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || "mongodb://tejashwinidonoju678_db_user:Teju2005@ac-gpu7pqh-shard-00-00.l1h00nq.mongodb.net:27017,ac-gpu7pqh-shard-00-01.l1h00nq.mongodb.net:27017,ac-gpu7pqh-shard-00-02.l1h00nq.mongodb.net:27017/dispatcher?ssl=true&replicaSet=atlas-o55f18-shard-0&authSource=admin&appName=Cluster0";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const JWT_SECRET = process.env.JWT_SECRET || "SUPER_SECRET_TOKEN_KEY_DROPVAULT";
 
 app.use(cors());
 app.use(express.json());
 
-io.on('connection', (socket) => {
-  console.log(`📡 A user connected to real-time notification channel: ${socket.id}`);
-});
-
-// Ensure the local uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
+if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir); }
 
-// Database Connection
 mongoose.connect(MONGO_URI)
   .then(() => console.log("🔥 Successfully connected to MongoDB Database"))
   .catch(err => console.error("Database connection failure:", err));
 
-// Multer Local Disk Storage Configuration
+io.on('connection', (socket) => {
+  console.log(`📡 User linked to WebSocket: ${socket.id}`);
+});
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
+  destination: (req, file, cb) => { cb(null, 'uploads/'); },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
@@ -52,18 +45,79 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-// Add this right before your other routes to prevent Render health-check issues
+// Render Health Check Base Endpoint
 app.get('/', (req, res) => {
-  res.send('Backend Server is running successfully!');
+  res.send('Backend Server is running successfully with Authentication!');
 });
+
 /**
- * 🚀 ROUTE 1: UPLOAD & GENERATE 6-DIGIT PIN
+ * 🔒 SECURITY MIDDLEWARE: Verifies if the request has a valid logged-in user token
  */
-app.post('/api/upload', upload.array('files'), async (req, res) => {
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+  if (!token) return res.status(401).json({ error: "Access denied. Please log in first." });
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ error: "Session expired. Please log in again." });
+    req.user = user; // Adds user details (id) directly into the request object
+    next();
+  });
+};
+
+/**
+ * 🔑 AUTH ROUTE 1: USER REGISTRATION (SIGNUP)
+ */
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) return res.status(400).json({ error: "All fields are required." });
+
+    const userExists = await User.findOne({ email });
+    if (userExists) return res.status(400).json({ error: "An account with this email already exists." });
+
+    // Hash the password securely
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    await User.create({ name, email, password: hashedPassword });
+    res.status(201).json({ message: "Account created successfully! You can now log in." });
+  } catch (error) {
+    res.status(500).json({ error: "Registration failed." });
+  }
+});
+
+/**
+ * 🔑 AUTH ROUTE 2: USER LOGIN
+ */
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: "Email and password are required." });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ error: "Invalid email or password." });
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) return res.status(400).json({ error: "Invalid email or password." });
+
+    // Generate a secure session token valid for 7 days
+    const token = jwt.sign({ id: user._id, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({ token, username: user.name });
+  } catch (error) {
+    res.status(500).json({ error: "Login failed." });
+  }
+});
+
+/**
+ * 🚀 AUTHENTICATED ROUTE 3: UPLOAD & LINK TO SENDER ID
+ */
+app.post('/api/upload', authenticateToken, upload.array('files'), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: "No files received." });
 
-    // Generate a unique 6-digit pin
     let pinCode;
     let isUnique = false;
     while (!isUnique) {
@@ -72,16 +126,13 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
       if (!existing) isUnique = true;
     }
 
-    // Determine filenames and clean storage setups
     let finalZipName = `bundle-${Date.now()}-${pinCode}.zip`;
     let finalZipPath = path.join(uploadDir, finalZipName);
 
-    // ZIP CREATION SEQUENCE
     const outputStream = fs.createWriteStream(finalZipPath);
     const archive = archiver('zip', { zlib: { level: 9 } });
 
     outputStream.on('close', async () => {
-      // Once zipping finishes, clean up the original single temporary unzipped files
       req.files.forEach(file => {
         if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
       });
@@ -89,13 +140,14 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
       const hoursValid = parseInt(req.body.expiryHours) || 24;
       const expiresAt = new Date(Date.now() + hoursValid * 60 * 60 * 1000);
 
-      // Save database object mapping pointing only to our consolidated .zip asset
+      // 🔥 FIXED: File is now saved permanently linked to the logged-in user's account ID!
       await File.create({
         originalName: req.files.length === 1 ? req.files[0].originalname : `Files_Bundle_${pinCode}.zip`,
         path: finalZipPath,
         pinCode,
         downloadLimit: parseInt(req.body.downloadLimit) || 5,
-        expiresAt
+        expiresAt,
+        senderId: req.user.id 
       });
 
       res.status(200).json({ pinCode });
@@ -104,7 +156,6 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
     archive.on('error', (err) => { throw err; });
     archive.pipe(outputStream);
 
-    // Read files list and append each to the archive tracker structure
     req.files.forEach(file => {
       archive.file(file.path, { name: file.originalname });
     });
@@ -116,26 +167,9 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
     res.status(500).json({ error: "Bundling system failed." });
   }
 });
-/**
- * 🔍 ROUTE 2: VERIFY THE PIN-CODE EXISTENCE
- */
-app.get('/api/verify-pin/:pin', async (req, res) => {
-  try {
-    const file = await File.findOne({ pinCode: req.params.pin });
-    if (!file) return res.status(404).json({ error: "Invalid or expired Pin Code." });
-
-    if (new Date() > file.expiresAt) return res.status(410).json({ error: "This pin has expired." });
-    if (file.downloadCount >= file.downloadLimit) return res.status(403).json({ error: "Download quota reached." });
-
-    res.json({ originalName: file.originalName });
-  } catch (error) {
-    res.status(500).json({ error: "Verification failed." });
-  }
-});
-
 
 /**
- * 🔓 UPDATED ROUTE 3: INSTANT DOWNLOAD BY PIN (No Password Needed)
+ * 📥 PUBLIC ROUTE 4: DIRECT DOWNLOAD BY PIN (No Auth needed for recipients!)
  */
 app.get('/api/download-by-pin/:pin', async (req, res) => {
   try {
@@ -149,7 +183,6 @@ app.get('/api/download-by-pin/:pin', async (req, res) => {
     file.downloadCount += 1;
     await file.save();
 
-    // 🔥 REAL-TIME BROADCAST: Send an instant alert across the internet to everyone listening!
     io.emit('file-downloaded', { 
       pinCode: req.params.pin, 
       fileName: file.originalName,
@@ -163,30 +196,13 @@ app.get('/api/download-by-pin/:pin', async (req, res) => {
 });
 
 /**
- * HOURLY AUTOMATED CLEANUP ROUTINE (Background Garbage Collector)
+ * 📊 SECURE AUTHENTICATED ROUTE 5: LIVE HISTORY TRACKER
  */
-cron.schedule('0 * * * *', async () => {
+app.get('/api/history-metrics', authenticateToken, async (req, res) => {
   try {
-    const expiredFiles = await File.find({ expiresAt: { $lt: new Date() } });
-    for (const file of expiredFiles) {
-      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-      await File.findByIdAndDelete(file._id);
-    }
-  } catch (err) { console.error(err); }
-});
+    // 🔥 SECURE FILTER: Find files matching ONLY the unique ID of the user logged in right now!
+    const files = await File.find({ senderId: req.user.id }).sort({ createdAt: -1 });
 
-/**
- * 📊 ROUTE 4: COLLECTIVE HISTORY TRACKING LOGS (Accepts multiple pins)
- */
-app.post('/api/history-metrics', async (req, res) => {
-  try {
-    const { pins } = req.body;
-    if (!pins || !Array.isArray(pins)) return res.status(400).json({ error: "Invalid pin manifest payload." });
-
-    // Look up all records matching the array of tracking codes
-    const files = await File.find({ pinCode: { $in: pins } }).sort({ createdAt: -1 });
-
-    // Map through the database fields to format data for dashboard presentation
     const formattedHistory = files.map(file => {
       const isExpired = new Date() > file.expiresAt;
       const isLimitHit = file.downloadCount >= file.downloadLimit;
@@ -206,32 +222,16 @@ app.post('/api/history-metrics', async (req, res) => {
     res.status(500).json({ error: "Failed to assemble status track record." });
   }
 });
-http.listen(PORT, "0.0.0.0", () => console.log(`🚀 Advanced Socket System listening on port ${PORT}`));
-/**
- * 📊 ROUTE 4: SECURE SENDER HISTORY LOGS (Verifies password before showing data)
- */
-app.post('/api/file-history', async (req, res) => {
+
+// Hourly Automated Cleanup Routine
+cron.schedule('0 * * * *', async () => {
   try {
-    const { fileId, password } = req.body;
-    if (!fileId || !password) return res.status(400).json({ error: "Missing required lookup details." });
-
-    const file = await File.findById(fileId);
-    if (!file) return res.status(404).json({ error: "No records found for this File ID." });
-
-    // Enforce authorization: only show analytics if password matches
-    if (file.password !== password) {
-      return res.status(401).json({ error: "Unauthorized access key. Access Denied." });
+    const expiredFiles = await File.find({ expiresAt: { $lt: new Date() } });
+    for (const file of expiredFiles) {
+      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      await File.findByIdAndDelete(file._id);
     }
-
-    // Return the full analytical track record back to the sender
-    res.json({
-      originalName: file.originalName,
-      downloadCount: file.downloadCount,
-      downloadLimit: file.downloadLimit,
-      createdAt: file.createdAt,
-      expiresAt: file.expiresAt
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Server error compiling history data." });
-  }
+  } catch (err) { console.error("Cron Error:", err); }
 });
+
+http.listen(PORT, "0.0.0.0", () => console.log(`🚀 Secure Authenticated System running on port ${PORT}`));
