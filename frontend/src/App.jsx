@@ -4,18 +4,18 @@ import { io } from 'socket.io-client';
 const BACKEND_URL = "https://secure-share-backend-gxc5.onrender.com"; 
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('send');
+  // Set default tab to 'about' so new visitors land on the informative dashboard first
+  const [activeTab, setActiveTab] = useState('about');
   const [initialPin, setInitialPin] = useState('');
   
   const [token, setToken] = useState(sessionStorage.getItem('userToken') || '');
   const [username, setUsername] = useState(sessionStorage.getItem('username') || '');
-  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register' | 'forgot'
+  const [authMode, setAuthMode] = useState('login'); 
 
-  // Input states
   const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [authSecretHint, setAuthSecretHint] = useState(''); // Tracking secret answer inputs
+  const [authSecretHint, setAuthSecretHint] = useState(''); 
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
 
@@ -46,6 +46,7 @@ export default function App() {
       setToken(data.token);
       setUsername(data.username);
       setAuthPassword('');
+      setActiveTab('send'); // Route to sender panel automatically on successful login
     } catch (err) {
       setAuthError(err.message);
     }
@@ -100,11 +101,11 @@ export default function App() {
     sessionStorage.clear();
     setToken('');
     setUsername('');
-    setActiveTab('send');
+    setActiveTab('about');
   };
 
   return (
-    <div className="app-container" style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
+    <div className="app-container" style={{ padding: '20px', maxWidth: '750px', margin: '0 auto' }}>
       
       {token && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1e293b', padding: '0.5rem 1rem', borderRadius: '6px', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
@@ -113,11 +114,16 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '2rem' }}>
-        <button onClick={() => { window.history.pushState({}, '', '/'); setInitialPin(''); setActiveTab('send'); }} style={{ width: 'auto', background: activeTab === 'send' ? '#0284c7' : '#334155', padding: '0.6rem 1.5rem' }}>📤 Send Files</button>
-        <button onClick={() => { setActiveTab('receive'); }} style={{ width: 'auto', background: activeTab === 'receive' ? '#0284c7' : '#334155', padding: '0.6rem 1.5rem' }}>📥 Receive Files</button>
+      {/* Main Navigation Controls Featuring the New Dashboard Tab */}
+      <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '2rem' }}>
+        <button onClick={() => setActiveTab('about')} style={{ width: 'auto', background: activeTab === 'about' ? '#0284c7' : '#334155', padding: '0.6rem 1.25rem' }}>🏠 Dashboard Info</button>
+        <button onClick={() => { window.history.pushState({}, '', '/'); setInitialPin(''); setActiveTab('send'); }} style={{ width: 'auto', background: activeTab === 'send' ? '#0284c7' : '#334155', padding: '0.6rem 1.25rem' }}>📤 Send Files</button>
+        <button onClick={() => { setActiveTab('receive'); }} style={{ width: 'auto', background: activeTab === 'receive' ? '#0284c7' : '#334155', padding: '0.6rem 1.25rem' }}>📥 Receive Files</button>
       </div>
 
+      {/* Tab Routing Config */}
+      {activeTab === 'about' && <DashboardWelcomeView onGetStarted={() => setActiveTab('send')} />}
+      
       {activeTab === 'send' && (
         token ? <SendView token={token} /> : 
         <div className="card">
@@ -159,7 +165,6 @@ export default function App() {
 
           {authMode === 'forgot' && (
             <form onSubmit={handleResetPassword}>
-              <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1.5rem' }}>Provide your verified registration email and answer your security query question to declare a new replacement password passkey.</p>
               <div className="form-group"><label>Your Account Email</label>
                 <input type="email" placeholder="enter account email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} required /></div>
               <div className="form-group"><label>What is your security question answer?</label>
@@ -179,7 +184,96 @@ export default function App() {
 }
 
 /**
- * 📤 SENDER VIEW
+ * 🏠 NEW COMPONENT: DASHBOARD INFRASTRUCTURE OVERVIEW
+ */
+function DashboardWelcomeView({ onGetStarted }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', color: '#cbd5e1' }}>
+      
+      {/* Hero Welcome Unit */}
+      <div className="card" style={{ textAlign: 'center', background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)', padding: '2.5rem' }}>
+        <h1 style={{ color: '#38bdf8', fontSize: '2.2rem', margin: '0 0 0.5rem 0' }}>Secure P2P File Dispatcher</h1>
+        <p style={{ color: '#94a3b8', fontSize: '1.05rem', maxWith: '600px', margin: '0 auto 1.5rem auto' }}>
+          An ephemeral, high-throughput file-sharing application designed for rapid, compressed bundle distribution via temporary cryptographic codes.
+        </p>
+        <button onClick={onGetStarted} style={{ background: '#10b981', width: 'auto', padding: '0.75rem 2rem', fontSize: '1rem', fontWeight: 'bold' }}>
+          Start Sharing Now →
+        </button>
+      </div>
+
+      {/* Grid Layout: Core Use Cases */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
+        <div className="card" style={{ background: '#1e293b', margin: 0, padding: '1.25rem' }}>
+          <h4 style={{ margin: '0 0 0.5rem 0', color: '#38bdf8', fontSize: '1.1rem' }}>📦 Multi-File Bundling</h4>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8', lineHeight: '1.4' }}>
+            Upload dozens of varying data formats simultaneously. Our processing backend compiles them on-the-fly into a single structured zip payload.
+          </p>
+        </div>
+        <div className="card" style={{ background: '#1e293b', margin: 0, padding: '1.25rem' }}>
+          <h4 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '1.1rem' }}>⚡ Frictionless Retrieval</h4>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8', lineHeight: '1.4' }}>
+            Recipients skip tedious signups or tracking loops. Files are unlocked via an intuitive 6-digit numeric string or direct URL click parameters.
+          </p>
+        </div>
+        <div className="card" style={{ background: '#1e293b', margin: 0, padding: '1.25rem' }}>
+          <h4 style={{ margin: '0 0 0.5rem 0', color: '#f59e0b', fontSize: '1.1rem' }}>📈 Device History Isolation</h4>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8', lineHeight: '1.4' }}>
+            Secure account links separate senders and receivers. Monitor real-time downloads and track active data pools safely from a personal console.
+          </p>
+        </div>
+      </div>
+
+      {/* Why Choose Us vs Traditional Platforms */}
+      <div className="card" style={{ background: '#0f172a', border: '1px solid #1e293b' }}>
+        <h3 style={{ margin: '0 0 1rem 0', color: '#f1f5f9' }}>💡 Why Choose Secure Dispatcher?</h3>
+        
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem', textAlign: 'left' }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid #1e293b' }}>
+              <th style={{ padding: '0.5rem', color: '#94a3b8' }}>Feature Attribute</th>
+              <th style={{ padding: '0.5rem', color: '#38bdf8' }}>Our Application</th>
+              <th style={{ padding: '0.5rem', color: '#64748b' }}>Standard Methods (Email/Chat)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style={{ borderBottom: '1px solid #1e293b' }}>
+              <td style={{ padding: '0.75rem 0.5rem', fontWeight: 'bold' }}>Account Requirements</td>
+              <td style={{ padding: '0.75rem 0.5rem', color: '#34d399' }}>Sender Only (Recipient Is Free)</td>
+              <td style={{ padding: '0.75rem 0.5rem' }}>Both parties must be registered</td>
+            </tr>
+            <tr style={{ borderBottom: '1px solid #1e293b' }}>
+              <td style={{ padding: '0.75rem 0.5rem', fontWeight: 'bold' }}>Size Allocations</td>
+              <td style={{ padding: '0.75rem 0.5rem', color: '#34d399' }}>High Throughput Buffers</td>
+              <td style={{ padding: '0.75rem 0.5rem' }}>Strictly locked at 25 MB floors</td>
+            </tr>
+            <tr style={{ borderBottom: '1px solid #1e293b' }}>
+              <td style={{ padding: '0.75rem 0.5rem', fontWeight: 'bold' }}>Download Thresholds</td>
+              <td style={{ padding: '0.75rem 0.5rem', color: '#34d399' }}>Customizable (1 to 5 limits)</td>
+              <td style={{ padding: '0.75rem 0.5rem' }}>Infinite (Stays on cloud infinitely)</td>
+            </tr>
+            <tr>
+              <td style={{ padding: '0.75rem 0.5rem', fontWeight: 'bold' }}>Data Footprint Lifecycle</td>
+              <td style={{ padding: '0.75rem 0.5rem', color: '#34d399' }}>Automated Cron Purging</td>
+              <td style={{ padding: '0.75rem 0.5rem' }}>Permanent storage footprint clutter</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* System Technical Architecture Acknowledgement */}
+      <div className="card" style={{ background: '#111827', borderLeft: '4px solid #38bdf8' }}>
+        <h4 style={{ margin: '0 0 0.25rem 0', color: '#e2e8f0' }}>⚡ Core System Engineering Mechanics</h4>
+        <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b', lineHeight: '1.5' }}>
+          This app runs on an asynchronous Node.js engine utilizing background streaming pipelines to zip data on the fly. Live transmission tracking parameters link to a cloud MongoDB Atlas architecture layer, utilizing active persistent Socket.io WebSocket channels to fire alerts instantly upon execution.
+        </p>
+      </div>
+
+    </div>
+  );
+}
+
+/**
+ * 📤 SENDER PANEL
  */
 function SendView({ token }) {
   const [files, setFiles] = useState([]);
