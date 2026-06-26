@@ -104,10 +104,11 @@ export default function App() {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#0b0f19', color: '#cbd5e1', fontFamily: 'system-ui, sans-serif' }}>
+    // 🔥 FIX: Parent wrapper is locked to the screen viewport height and prevents outer document bleeding
+    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', background: '#0b0f19', color: '#cbd5e1', fontFamily: 'system-ui, sans-serif' }}>
       
       {/* 💻 LEFT NAVIGATION SIDEBAR */}
-      <div style={{ width: '260px', background: '#111827', borderRight: '1px solid #1f2937', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '2rem', boxSizing: 'border-box' }}>
+      <div style={{ width: '260px', background: '#111827', borderRight: '1px solid #1f2937', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '2rem', boxSizing: 'border-box', flexShrink: 0 }}>
         <div>
           <h2 style={{ color: '#38bdf8', margin: 0, fontSize: '1.4rem', fontWeight: '800', letterSpacing: '0.5px' }}>🚀 DISPATCHER</h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>Secure P2P File Ecosystem</p>
@@ -139,7 +140,8 @@ export default function App() {
       </div>
 
       {/* 🖥️ RIGHT MAIN APP FULL SCREEN VIEW */}
-      <div style={{ flexGrow: 1, padding: '2.5rem', boxSizing: 'border-box', overflowY: 'auto', height: '100vh' }}>
+      {/* 🔥 FIX: Changed height to 100% and added flex: 1 with border-box layout containment */}
+      <div style={{ flex: 1, padding: '2.5rem', boxSizing: 'border-box', overflowY: 'auto', height: '100%' }}>
         
         {activeTab === 'about' && (
           <DashboardWelcomeView isLoggedIn={!!token} onGetStarted={() => token ? setActiveTab('send') : setActiveTab('authenticate')} />
